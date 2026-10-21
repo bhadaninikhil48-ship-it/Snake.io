@@ -22,7 +22,7 @@ export const OPPOSITE_DIRECTIONS = {
 
 export const SPEED_PRESETS = {
   CASUAL: { label: 'Casual', tickInterval: 130 },
-  NORMAL: { label: 'Normal', tickInterval: 100 },
+  NORMAL: { label: 'Normal', tickInterval: 115 }, // Adjusted from 100ms (-13% speed) for smoother gameplay balance
   HARD: { label: 'Hyper', tickInterval: 75 },
 };
 

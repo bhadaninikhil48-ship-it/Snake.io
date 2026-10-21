@@ -111,7 +111,7 @@ export const GameCanvas = ({
 
   // Attach 4-direction pointer swipe controls to the gameplay area
   useEffect(() => {
-    const target = wrapperRef.current;
+    const target = wrapperRef.current?.closest('.arena-container') || wrapperRef.current;
     if (!target || !onDirection) return;
 
     const handleSwipeDirection = (dir) => {

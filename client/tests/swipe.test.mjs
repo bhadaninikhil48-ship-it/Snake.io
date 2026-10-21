@@ -168,6 +168,74 @@ const reverseTurn = chainedController.handlePointerMove({ pointerId: 8, clientX:
 if (reverseTurn !== null) {
   throw new Error('Reversal against last dispatched turn in chained gesture was unexpectedly permitted');
 }
+chainedController.handlePointerUp({ pointerId: 8, clientX: 200, clientY: 210 });
 console.log('✓ Test 12 Passed: Reversals against last dispatched direction are rejected in chained gestures');
+
+// 13. Test TouchEvent Normalization & Fallback
+const touchController = new SwipeController({ minDistance: 25 });
+// Simulated touchstart with touches array
+const touchStartStarted = touchController.handlePointerDown({
+  touches: [{ clientX: 50, clientY: 50, identifier: 101 }],
+});
+if (!touchStartStarted || touchController.activePointerId !== 101) {
+  throw new Error('TouchEvent touchstart failed to extract coords and identifier');
+}
+// Simulated touchmove with touches array
+const touchMoveResult = touchController.handlePointerMove({
+  touches: [{ clientX: 50, clientY: 90, identifier: 101 }],
+}, 'RIGHT');
+if (!touchMoveResult || touchMoveResult.name !== 'DOWN') {
+  throw new Error(`TouchEvent touchmove failed: expected DOWN, got ${touchMoveResult?.name}`);
+}
+// Simulated touchend with changedTouches
+touchController.handlePointerUp({
+  changedTouches: [{ clientX: 50, clientY: 92, identifier: 101 }],
+}, 'DOWN');
+if (touchController.isSwiping) {
+  throw new Error('TouchEvent touchend failed to clear swiping state');
+}
+console.log('✓ Test 13 Passed: TouchEvent fallback coordinate extraction and gesture resolution verified');
+
+// 14. Test Fast Flick Resolution on PointerUp without intermediate move
+const flickController = new SwipeController({ minDistance: 25 });
+flickController.handlePointerDown({ pointerId: 9, clientX: 100, clientY: 100 });
+const flickUp = flickController.handlePointerUp({ pointerId: 9, clientX: 55, clientY: 100 }, 'DOWN');
+if (!flickUp || flickUp.name !== 'LEFT') {
+  throw new Error(`Fast flick on pointerUp failed: expected LEFT, got ${flickUp?.name}`);
+}
+console.log('✓ Test 14 Passed: Fast flick on release without move triggers turn');
+
+// 15. Test PointerCancel completely clears active gesture
+flickController.handlePointerDown({ pointerId: 11, clientX: 100, clientY: 100 });
+flickController.handlePointerCancel({ pointerId: 11 });
+if (flickController.activePointerId !== null || flickController.isSwiping) {
+  throw new Error('PointerCancel failed to reset activePointerId and isSwiping');
+}
+console.log('✓ Test 15 Passed: PointerCancel cleanly resets active gesture');
+
+// 16. Test DOM Element Attach / Detach Cleanup & Interactive Filtering
+const mockEvents = {};
+const mockElement = {
+  style: {},
+  addEventListener: (name, fn) => { mockEvents[name] = fn; },
+  removeEventListener: (name) => { delete mockEvents[name]; },
+  setPointerCapture: () => {},
+  releasePointerCapture: () => {},
+  hasPointerCapture: () => false,
+};
+
+let dispatchedDir = null;
+const detach = controller.attach(mockElement, (dir) => { dispatchedDir = dir; }, () => 'UP');
+
+// Verify touchAction style applied
+if (mockElement.style.touchAction !== 'none') {
+  throw new Error('touchAction: none was not applied to element in attach');
+}
+// Verify cleanup removes listeners
+detach();
+if (Object.keys(mockEvents).length !== 0) {
+  throw new Error('detach() failed to remove element event listeners');
+}
+console.log('✓ Test 16 Passed: DOM attach, touchAction enforcement, and cleanup verified');
 
 console.log('=== ALL SWIPE CONTROLS UNIT TESTS PASSED! ===');

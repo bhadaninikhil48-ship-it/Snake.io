@@ -33,6 +33,10 @@ export class InputManager {
     this.queue = [];
   }
 
+  peekDirection() {
+    return this.queue.length > 0 ? this.queue[0] : null;
+  }
+
   handleKeyDown(e) {
     // Prevent default scrolling for game keys
     const gameKeys = [

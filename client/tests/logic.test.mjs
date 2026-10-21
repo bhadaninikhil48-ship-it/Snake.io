@@ -60,4 +60,49 @@ if (!CollisionSystem.checkSelfCollision(mockHead, mockBody)) {
 }
 console.log('✓ Self collision detection passed');
 
+// 7. Test Speed Presets and Normal Mode Speed Adjustment
+import { SPEED_PRESETS } from '../src/game/constants.js';
+if (SPEED_PRESETS.NORMAL.tickInterval !== 115) {
+  throw new Error(`Expected NORMAL mode tickInterval to be 115ms, got ${SPEED_PRESETS.NORMAL.tickInterval}`);
+}
+if (SPEED_PRESETS.CASUAL.tickInterval !== 130 || SPEED_PRESETS.HARD.tickInterval !== 75) {
+  throw new Error('Casual or Hyper speed presets were unexpectedly modified');
+}
+console.log('✓ Normal Mode speed adjustment verified (115ms interval, ~13% speed reduction)');
+
+// 8. Test Renderer.render execution without ReferenceError
+import { Renderer } from '../src/game/Renderer.js';
+const mockCtx = {
+  save: () => {},
+  restore: () => {},
+  beginPath: () => {},
+  arc: () => {},
+  fill: () => {},
+  stroke: () => {},
+  moveTo: () => {},
+  lineTo: () => {},
+  fillRect: () => {},
+  strokeRect: () => {},
+  clearRect: () => {},
+  fillText: () => {},
+  translate: () => {},
+  rotate: () => {},
+  createRadialGradient: () => ({ addColorStop: () => {} }),
+};
+const renderer = new Renderer();
+renderer.render(mockCtx, {
+  snake,
+  food: { x: 10, y: 10 },
+  particles: null,
+  isGameOver: false,
+  intendedDirection: 'UP',
+}, 100);
+renderer.render(mockCtx, {
+  snake,
+  food: null,
+  particles: null,
+  isGameOver: false,
+}, 200);
+console.log('✓ Renderer.render executes cleanly without ReferenceError');
+
 console.log('--- ALL LOGIC TESTS PASSED SUCCESSFULLY! ---');

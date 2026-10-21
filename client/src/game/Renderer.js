@@ -13,7 +13,7 @@ export class Renderer {
    * Main render pass
    */
   render(ctx, gameState, timestamp = 0) {
-    const { snake, food, particles, isGameOver } = gameState;
+    const { snake, food, particles, isGameOver, intendedDirection } = gameState || {};
 
     // Clear background
     this.drawBackground(ctx);
@@ -31,7 +31,7 @@ export class Renderer {
 
     // Draw snake (if alive or dying)
     if (snake) {
-      this.drawSnake(ctx, snake, isGameOver, timestamp);
+      this.drawSnake(ctx, snake, isGameOver, timestamp, intendedDirection);
     }
 
     // Draw particle bursts
@@ -177,7 +177,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  drawSnake(ctx, snake, isGameOver, timestamp) {
+  drawSnake(ctx, snake, isGameOver, timestamp, intendedDirection = null) {
     const segments = snake.segments;
     if (segments.length === 0) return;
 
@@ -236,8 +236,9 @@ export class Renderer {
     ctx.arc(hx, hy, headRadius, 0, Math.PI * 2);
     ctx.fill();
 
-    // 3. Draw Eyes looking in the direction of movement
-    this.drawSnakeEyes(ctx, hx, hy, snake.direction, headRadius, isGameOver);
+    // 3. Draw Eyes looking in the direction of movement (or local intended direction)
+    const eyeDir = intendedDirection || snake.direction;
+    this.drawSnakeEyes(ctx, hx, hy, eyeDir, headRadius, isGameOver);
 
     ctx.restore();
   }

@@ -1,7 +1,8 @@
 /**
  * SwipeController - Touch and pointer gesture handler for 4-direction snake steering
- * Evaluates gestures on pointermove for instant response as soon as the threshold is met,
- * while supporting flicks on pointerup and chained turns in a single continuous stroke.
+ * Evaluates gestures on pointermove / touchmove for instant response as soon as threshold is met,
+ * while supporting flicks on pointerup / touchend and chained turns in a single continuous stroke.
+ * Built for cross-browser reliability on real Android and iOS mobile devices.
  */
 
 import { DIRECTIONS, OPPOSITE_DIRECTIONS } from './constants.js';
@@ -19,6 +20,29 @@ export class SwipeController {
     this.isSwiping = false;
     this.lastDispatchedDirection = null;
     this.hasDispatchedInCurrentStroke = false;
+  }
+
+  /**
+   * Normalizes coordinates from PointerEvent or TouchEvent
+   */
+  _extractCoords(e) {
+    if (!e) return null;
+    if (typeof e.clientX === 'number' && typeof e.clientY === 'number') {
+      return {
+        x: e.clientX,
+        y: e.clientY,
+        id: e.pointerId !== undefined ? e.pointerId : 1,
+      };
+    }
+    const touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+    if (touch && typeof touch.clientX === 'number') {
+      return {
+        x: touch.clientX,
+        y: touch.clientY,
+        id: touch.identifier !== undefined ? touch.identifier : 1,
+      };
+    }
+    return null;
   }
 
   /**
@@ -60,19 +84,22 @@ export class SwipeController {
   }
 
   /**
-   * Records pointer down origin
+   * Records pointer or touch down origin
    */
   handlePointerDown(e) {
     if (!e) return false;
 
-    // Discard secondary pointers while a gesture is active
+    // Discard secondary pointers while a gesture is already active
     if (this.activePointerId !== null) {
       return false;
     }
 
-    this.activePointerId = e.pointerId !== undefined ? e.pointerId : 1;
-    this.startX = e.clientX || 0;
-    this.startY = e.clientY || 0;
+    const coords = this._extractCoords(e);
+    if (!coords) return false;
+
+    this.activePointerId = coords.id;
+    this.startX = coords.x;
+    this.startY = coords.y;
     this.isSwiping = true;
     this.lastDispatchedDirection = null;
     this.hasDispatchedInCurrentStroke = false;
@@ -80,7 +107,7 @@ export class SwipeController {
   }
 
   /**
-   * Evaluates gesture in real-time during pointer movement.
+   * Evaluates gesture in real-time during movement.
    * Dispatches immediately when threshold is reached without waiting for pointer release.
    */
   handlePointerMove(e, currentDirectionName = null) {
@@ -88,13 +115,13 @@ export class SwipeController {
       return null;
     }
 
-    const pointerId = e.pointerId !== undefined ? e.pointerId : 1;
-    if (pointerId !== this.activePointerId) {
+    const coords = this._extractCoords(e);
+    if (!coords || coords.id !== this.activePointerId) {
       return null;
     }
 
-    const currX = e.clientX || 0;
-    const currY = e.clientY || 0;
+    const currX = coords.x;
+    const currY = coords.y;
     const dx = currX - this.startX;
     const dy = currY - this.startY;
 
@@ -136,20 +163,21 @@ export class SwipeController {
   }
 
   /**
-   * Evaluates gesture on pointer release (e.g. quick flick where pointermove did not trigger)
+   * Evaluates gesture on release (e.g. quick flick where pointermove did not trigger)
    */
   handlePointerUp(e, currentDirectionName = null) {
     if (!e || this.activePointerId === null) {
       return null;
     }
 
-    const pointerId = e.pointerId !== undefined ? e.pointerId : 1;
+    const coords = this._extractCoords(e);
+    const pointerId = coords ? coords.id : (e.pointerId !== undefined ? e.pointerId : this.activePointerId);
     if (pointerId !== this.activePointerId) {
       return null;
     }
 
-    const endX = e.clientX || 0;
-    const endY = e.clientY || 0;
+    const endX = coords ? coords.x : (e.clientX || 0);
+    const endY = coords ? coords.y : (e.clientY || 0);
     const dx = endX - this.startX;
     const dy = endY - this.startY;
     const effectiveDir = this.lastDispatchedDirection || currentDirectionName;
@@ -167,8 +195,9 @@ export class SwipeController {
    * Safely cancels gesture without triggering turn
    */
   handlePointerCancel(e) {
-    const pointerId = e && e.pointerId !== undefined ? e.pointerId : this.activePointerId;
-    if (this.activePointerId === pointerId) {
+    const coords = e ? this._extractCoords(e) : null;
+    const pointerId = coords ? coords.id : (e && e.pointerId !== undefined ? e.pointerId : this.activePointerId);
+    if (this.activePointerId === null || this.activePointerId === pointerId) {
       this.activePointerId = null;
       this.isSwiping = false;
       this.lastDispatchedDirection = null;
@@ -179,7 +208,8 @@ export class SwipeController {
   }
 
   /**
-   * Attaches pointer gesture listeners to a DOM element
+   * Attaches pointer and touch gesture listeners to a DOM element.
+   * Uses Pointer Events with automatic Touch Event fallback for universal mobile support.
    *
    * @param {HTMLElement} element Target gameplay DOM element
    * @param {Function} onDirection Callback when a valid swipe direction is triggered
@@ -189,18 +219,49 @@ export class SwipeController {
   attach(element, onDirection, getCurrentDirection = null) {
     if (!element) return () => {};
 
+    // Ensure CSS touchAction is applied to target
+    try {
+      element.style.touchAction = 'none';
+    } catch {}
+
+    const isInteractive = (target) => {
+      return !!(
+        target &&
+        typeof target.closest === 'function' &&
+        target.closest('button, a, input, select, textarea, .modal-card, .menu-overlay')
+      );
+    };
+
+    let pointerSystemActive = false;
+
+    // --- Pointer Events Handlers ---
     const onDown = (e) => {
       if (e.isPrimary === false) return;
+      if (isInteractive(e.target)) return;
+
+      pointerSystemActive = true;
       const started = this.handlePointerDown(e);
       if (started) {
+        if (e.cancelable && e.pointerType === 'touch') {
+          e.preventDefault();
+        }
         try {
-          element.setPointerCapture(e.pointerId);
+          if (element.setPointerCapture) {
+            element.setPointerCapture(e.pointerId);
+          }
         } catch {}
       }
     };
 
     const onMove = (e) => {
+      if (e._swipeProcessed) return;
+      e._swipeProcessed = true;
+
       if (this.activePointerId !== e.pointerId) return;
+      if (e.cancelable && e.pointerType === 'touch') {
+        e.preventDefault();
+      }
+
       const currentDir = typeof getCurrentDirection === 'function' ? getCurrentDirection() : null;
       const dir = this.handlePointerMove(e, currentDir);
       if (dir && typeof onDirection === 'function') {
@@ -209,11 +270,16 @@ export class SwipeController {
     };
 
     const onUp = (e) => {
+      if (e._swipeProcessed) return;
+      e._swipeProcessed = true;
+
       if (this.activePointerId !== e.pointerId) return;
       const currentDir = typeof getCurrentDirection === 'function' ? getCurrentDirection() : null;
       const dir = this.handlePointerUp(e, currentDir);
       try {
-        element.releasePointerCapture(e.pointerId);
+        if (element.hasPointerCapture && element.hasPointerCapture(e.pointerId)) {
+          element.releasePointerCapture(e.pointerId);
+        }
       } catch {}
 
       if (dir && typeof onDirection === 'function') {
@@ -222,23 +288,108 @@ export class SwipeController {
     };
 
     const onCancel = (e) => {
+      if (e._swipeProcessed) return;
+      e._swipeProcessed = true;
+
       if (this.activePointerId !== e.pointerId) return;
       this.handlePointerCancel(e);
       try {
-        element.releasePointerCapture(e.pointerId);
+        if (element.hasPointerCapture && element.hasPointerCapture(e.pointerId)) {
+          element.releasePointerCapture(e.pointerId);
+        }
       } catch {}
     };
 
-    element.addEventListener('pointerdown', onDown);
-    element.addEventListener('pointermove', onMove);
-    element.addEventListener('pointerup', onUp);
-    element.addEventListener('pointercancel', onCancel);
+    const onLostCapture = (e) => {
+      if (this.activePointerId === e.pointerId) {
+        this.handlePointerCancel(e);
+      }
+    };
+
+    // --- Touch Events Fallback (for older WebViews or devices where Pointer Capture fails) ---
+    const onTouchStart = (e) => {
+      if (pointerSystemActive) return;
+      if (isInteractive(e.target)) return;
+
+      const started = this.handlePointerDown(e);
+      if (started && e.cancelable) {
+        e.preventDefault();
+      }
+    };
+
+    const onTouchMove = (e) => {
+      if (pointerSystemActive) return;
+      if (!this.isSwiping) return;
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+
+      const currentDir = typeof getCurrentDirection === 'function' ? getCurrentDirection() : null;
+      const dir = this.handlePointerMove(e, currentDir);
+      if (dir && typeof onDirection === 'function') {
+        onDirection(dir);
+      }
+    };
+
+    const onTouchEnd = (e) => {
+      if (pointerSystemActive) return;
+      if (!this.isSwiping) return;
+
+      const currentDir = typeof getCurrentDirection === 'function' ? getCurrentDirection() : null;
+      const dir = this.handlePointerUp(e, currentDir);
+      if (dir && typeof onDirection === 'function') {
+        onDirection(dir);
+      }
+    };
+
+    const onTouchCancel = (e) => {
+      if (pointerSystemActive) return;
+      this.handlePointerCancel(e);
+    };
+
+    // Attach Pointer Events
+    element.addEventListener('pointerdown', onDown, { passive: false });
+    element.addEventListener('pointermove', onMove, { passive: false });
+    element.addEventListener('pointerup', onUp, { passive: true });
+    element.addEventListener('pointercancel', onCancel, { passive: true });
+    element.addEventListener('lostpointercapture', onLostCapture, { passive: true });
+
+    // Window listeners ensure gestures ending outside bounds are safely resolved
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pointermove', onMove, { passive: false });
+      window.addEventListener('pointerup', onUp, { passive: true });
+      window.addEventListener('pointercancel', onCancel, { passive: true });
+    }
+
+    // Attach Touch Event fallback
+    element.addEventListener('touchstart', onTouchStart, { passive: false });
+    element.addEventListener('touchmove', onTouchMove, { passive: false });
+    element.addEventListener('touchend', onTouchEnd, { passive: true });
+    element.addEventListener('touchcancel', onTouchCancel, { passive: true });
+    if (typeof window !== 'undefined') {
+      window.addEventListener('touchend', onTouchEnd, { passive: true });
+    }
 
     return () => {
       element.removeEventListener('pointerdown', onDown);
       element.removeEventListener('pointermove', onMove);
       element.removeEventListener('pointerup', onUp);
       element.removeEventListener('pointercancel', onCancel);
+      element.removeEventListener('lostpointercapture', onLostCapture);
+
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onCancel);
+      }
+
+      element.removeEventListener('touchstart', onTouchStart);
+      element.removeEventListener('touchmove', onTouchMove);
+      element.removeEventListener('touchend', onTouchEnd);
+      element.removeEventListener('touchcancel', onTouchCancel);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('touchend', onTouchEnd);
+      }
     };
   }
 }

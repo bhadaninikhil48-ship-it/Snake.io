@@ -161,6 +161,7 @@ export class GameEngine {
   sendDirection(dir) {
     if (this.state === GAME_STATES.PLAYING) {
       this.inputManager.pushDirection(dir);
+      this.renderSingleFrame();
     }
   }
 
@@ -266,6 +267,7 @@ export class GameEngine {
         food: this.foodManager.currentFood,
         particles: this.particleSystem,
         isGameOver: this.state === GAME_STATES.GAME_OVER,
+        intendedDirection: this.inputManager.peekDirection()?.name,
       },
       timestamp
     );
