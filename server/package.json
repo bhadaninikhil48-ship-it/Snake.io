@@ -1,0 +1,15 @@
+{
+  "name": "snake-clash-server",
+  "version": "1.0.0",
+  "description": "Multiplayer WebSocket backend for Snake Clash Online (Phase 2)",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/rooms.test.mjs && node tests/e2e-ws.test.mjs && node tests/comprehensive-phase2.test.mjs && node tests/multiplayer-game.test.mjs && node tests/e2e-match.test.mjs && node tests/matchmaking.test.mjs && node tests/security-audit.test.mjs"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  }
+}

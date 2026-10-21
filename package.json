@@ -1,0 +1,24 @@
+{
+  "name": "snake-clash-online",
+  "version": "1.0.0",
+  "description": "Browser-based multiplayer game - SNAKE CLASH ONLINE",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "client": "npm --prefix client run dev",
+    "server": "npm --prefix server start",
+    "build": "npm --prefix client run build",
+    "preview": "npm --prefix client run preview",
+    "test": "npm --prefix server test && npm --prefix client test"
+  },
+  "keywords": [
+    "snake",
+    "multiplayer",
+    "canvas",
+    "react",
+    "vite",
+    "websocket"
+  ],
+  "author": "",
+  "license": "MIT"
+}
