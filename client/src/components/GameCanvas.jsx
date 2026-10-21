@@ -20,13 +20,30 @@ export const GameCanvas = ({
   const wrapperRef = useRef(null);
   const interpolatorRef = useRef(new SnapshotInterpolator(100));
   const swipeControllerRef = useRef(new SwipeController({ minDistance: 25 }));
+  const multiplayerStateRef = useRef(multiplayerState);
+  const pendingDirectionRef = useRef(null);
 
-  // Forward incoming authoritative snapshots to the interpolator
+  // Forward incoming authoritative snapshots to the interpolator and sync latest state ref
   useEffect(() => {
+    multiplayerStateRef.current = multiplayerState;
+    if (multiplayerState && pendingDirectionRef.current) {
+      const myId = multiplayerClient.playerId;
+      const mySnake =
+        multiplayerState.p1?.id === myId
+          ? multiplayerState.p1
+          : multiplayerState.p2?.id === myId
+          ? multiplayerState.p2
+          : null;
+      if (mySnake && mySnake.direction === pendingDirectionRef.current) {
+        pendingDirectionRef.current = null;
+      }
+    }
+
     if (isMultiplayer && multiplayerState) {
       interpolatorRef.current.pushSnapshot(multiplayerState);
     } else if (!isMultiplayer) {
       interpolatorRef.current.reset();
+      pendingDirectionRef.current = null;
     }
   }, [multiplayerState, isMultiplayer]);
 
@@ -59,7 +76,7 @@ export const GameCanvas = ({
     };
   }, [engine, isMultiplayer]);
 
-  // Multiplayer render loop with sub-tick visual interpolation
+  // Multiplayer render loop with sub-tick visual interpolation and instantaneous local head orient
   useEffect(() => {
     if (!isMultiplayer || !engine) return;
 
@@ -75,7 +92,9 @@ export const GameCanvas = ({
     const renderLoop = (timestamp) => {
       const visualState = interpolator.getInterpolatedState(performance.now());
       if (visualState) {
-        engine.renderer.renderMultiplayer(ctx, visualState, timestamp);
+        const myId = multiplayerClient.playerId;
+        const pendingDir = pendingDirectionRef.current || multiplayerClient.pendingDirection;
+        engine.renderer.renderMultiplayer(ctx, visualState, timestamp, myId, pendingDir);
       }
       animFrameId = requestAnimationFrame(renderLoop);
     };
@@ -95,22 +114,28 @@ export const GameCanvas = ({
     const target = wrapperRef.current;
     if (!target || !onDirection) return;
 
+    const handleSwipeDirection = (dir) => {
+      pendingDirectionRef.current = dir.name;
+      onDirection(dir);
+    };
+
     const getCurrentDirection = () => {
       if (isMultiplayer) {
         const myId = multiplayerClient.playerId;
+        const mpState = multiplayerStateRef.current;
         const mySnake =
-          multiplayerState?.p1?.id === myId
-            ? multiplayerState.p1
-            : multiplayerState?.p2?.id === myId
-            ? multiplayerState.p2
+          mpState?.p1?.id === myId
+            ? mpState.p1
+            : mpState?.p2?.id === myId
+            ? mpState.p2
             : null;
-        return mySnake?.direction || null;
+        return pendingDirectionRef.current || multiplayerClient.pendingDirection || mySnake?.direction || null;
       }
-      return engine?.snake?.direction?.name || null;
+      return pendingDirectionRef.current || engine?.snake?.direction?.name || null;
     };
 
-    return swipeControllerRef.current.attach(target, onDirection, getCurrentDirection);
-  }, [onDirection, isMultiplayer, multiplayerState, engine]);
+    return swipeControllerRef.current.attach(target, handleSwipeDirection, getCurrentDirection);
+  }, [onDirection, isMultiplayer, engine]);
 
   return (
     <div ref={wrapperRef} className="canvas-wrapper">

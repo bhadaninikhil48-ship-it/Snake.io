@@ -1,5 +1,7 @@
 /**
  * SwipeController - Touch and pointer gesture handler for 4-direction snake steering
+ * Evaluates gestures on pointermove for instant response as soon as the threshold is met,
+ * while supporting flicks on pointerup and chained turns in a single continuous stroke.
  */
 
 import { DIRECTIONS, OPPOSITE_DIRECTIONS } from './constants.js';
@@ -15,6 +17,8 @@ export class SwipeController {
     this.startX = 0;
     this.startY = 0;
     this.isSwiping = false;
+    this.lastDispatchedDirection = null;
+    this.hasDispatchedInCurrentStroke = false;
   }
 
   /**
@@ -70,11 +74,69 @@ export class SwipeController {
     this.startX = e.clientX || 0;
     this.startY = e.clientY || 0;
     this.isSwiping = true;
+    this.lastDispatchedDirection = null;
+    this.hasDispatchedInCurrentStroke = false;
     return true;
   }
 
   /**
-   * Evaluates gesture on pointer release
+   * Evaluates gesture in real-time during pointer movement.
+   * Dispatches immediately when threshold is reached without waiting for pointer release.
+   */
+  handlePointerMove(e, currentDirectionName = null) {
+    if (!e || this.activePointerId === null || !this.isSwiping) {
+      return null;
+    }
+
+    const pointerId = e.pointerId !== undefined ? e.pointerId : 1;
+    if (pointerId !== this.activePointerId) {
+      return null;
+    }
+
+    const currX = e.clientX || 0;
+    const currY = e.clientY || 0;
+    const dx = currX - this.startX;
+    const dy = currY - this.startY;
+
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+
+    if (Math.max(absX, absY) < this.minDistance) {
+      return null;
+    }
+
+    const effectiveDir = this.lastDispatchedDirection || currentDirectionName;
+    const dir = this.resolveSwipe(dx, dy, effectiveDir);
+
+    if (dir) {
+      // Valid turn triggered! Set new pivot and record direction
+      this.startX = currX;
+      this.startY = currY;
+      this.lastDispatchedDirection = dir.name;
+      this.hasDispatchedInCurrentStroke = true;
+      return dir;
+    }
+
+    // If gesture moved significantly in the SAME direction as effectiveDir,
+    // advance the pivot along with the finger so subsequent perpendicular turns
+    // trigger promptly without having to counteract the prior distance.
+    let movingDir = null;
+    if (absX > absY) {
+      movingDir = dx > 0 ? 'RIGHT' : 'LEFT';
+    } else {
+      movingDir = dy > 0 ? 'DOWN' : 'UP';
+    }
+
+    if (movingDir === effectiveDir) {
+      this.startX = currX;
+      this.startY = currY;
+    }
+
+    return null;
+  }
+
+  /**
+   * Evaluates gesture on pointer release (e.g. quick flick where pointermove did not trigger)
    */
   handlePointerUp(e, currentDirectionName = null) {
     if (!e || this.activePointerId === null) {
@@ -90,12 +152,15 @@ export class SwipeController {
     const endY = e.clientY || 0;
     const dx = endX - this.startX;
     const dy = endY - this.startY;
+    const effectiveDir = this.lastDispatchedDirection || currentDirectionName;
 
     // Reset gesture state
     this.activePointerId = null;
     this.isSwiping = false;
+    this.lastDispatchedDirection = null;
+    this.hasDispatchedInCurrentStroke = false;
 
-    return this.resolveSwipe(dx, dy, currentDirectionName);
+    return this.resolveSwipe(dx, dy, effectiveDir);
   }
 
   /**
@@ -106,6 +171,8 @@ export class SwipeController {
     if (this.activePointerId === pointerId) {
       this.activePointerId = null;
       this.isSwiping = false;
+      this.lastDispatchedDirection = null;
+      this.hasDispatchedInCurrentStroke = false;
       return true;
     }
     return false;
@@ -132,6 +199,15 @@ export class SwipeController {
       }
     };
 
+    const onMove = (e) => {
+      if (this.activePointerId !== e.pointerId) return;
+      const currentDir = typeof getCurrentDirection === 'function' ? getCurrentDirection() : null;
+      const dir = this.handlePointerMove(e, currentDir);
+      if (dir && typeof onDirection === 'function') {
+        onDirection(dir);
+      }
+    };
+
     const onUp = (e) => {
       if (this.activePointerId !== e.pointerId) return;
       const currentDir = typeof getCurrentDirection === 'function' ? getCurrentDirection() : null;
@@ -154,11 +230,13 @@ export class SwipeController {
     };
 
     element.addEventListener('pointerdown', onDown);
+    element.addEventListener('pointermove', onMove);
     element.addEventListener('pointerup', onUp);
     element.addEventListener('pointercancel', onCancel);
 
     return () => {
       element.removeEventListener('pointerdown', onDown);
+      element.removeEventListener('pointermove', onMove);
       element.removeEventListener('pointerup', onUp);
       element.removeEventListener('pointercancel', onCancel);
     };

@@ -12,6 +12,8 @@ export class ServerSnake {
     this.direction = initialDirection; // 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
     this.pendingDirection = initialDirection;
     this.hasInputThisTick = false;
+    this.inputQueue = [];
+    this.maxQueueSize = 2; // Buffer up to 2 quick turns
     this.score = 0;
     this.pendingGrowth = 0;
     this.isAlive = true;
@@ -29,11 +31,11 @@ export class ServerSnake {
   }
 
   /**
-   * Validates and queues a direction change for the upcoming tick.
+   * Validates and queues a direction change for the upcoming ticks.
    * Enforces:
    * 1. Valid direction names
-   * 2. No 180-degree immediate reversal into neck
-   * 3. Max one accepted direction change per game tick
+   * 2. No 180-degree immediate reversal into current direction or last queued turn
+   * 3. Max buffer of 2 rapid turns to prevent lost inputs on quick cornering
    */
   queueDirection(dirName) {
     if (!dirName || typeof dirName !== 'string') return false;
@@ -42,25 +44,40 @@ export class ServerSnake {
     // Must be one of the 4 valid directions
     if (!DIRECTIONS[upper]) return false;
 
-    // Enforce max 1 direction change per tick
-    if (this.hasInputThisTick) return false;
-
-    // Prevent direct 180-degree self-reversal against current moving direction
-    if (OPPOSITE_DIRECTIONS[this.direction] === upper) {
+    // Reject if buffer is full
+    if (this.inputQueue.length >= this.maxQueueSize) {
       return false;
     }
 
+    // Evaluate reversal and redundancy against the last queued direction (or current direction)
+    const referenceDirection = this.inputQueue.length > 0
+      ? this.inputQueue[this.inputQueue.length - 1]
+      : this.direction;
+
+    // Prevent direct 180-degree self-reversal or duplicate input
+    if (OPPOSITE_DIRECTIONS[referenceDirection] === upper || referenceDirection === upper) {
+      return false;
+    }
+
+    this.inputQueue.push(upper);
     this.pendingDirection = upper;
     this.hasInputThisTick = true;
     return true;
   }
 
   /**
-   * Applies the queued direction at the start of a game tick
+   * Applies the next queued direction at the start of a game tick
    */
   applyDirection() {
-    this.direction = this.pendingDirection;
-    this.hasInputThisTick = false;
+    while (this.inputQueue.length > 0) {
+      const candidate = this.inputQueue.shift();
+      if (OPPOSITE_DIRECTIONS[this.direction] !== candidate && candidate !== this.direction) {
+        this.direction = candidate;
+        break;
+      }
+    }
+    this.pendingDirection = this.inputQueue[0] || this.direction;
+    this.hasInputThisTick = this.inputQueue.length > 0;
   }
 
   /**

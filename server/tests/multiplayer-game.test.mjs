@@ -104,6 +104,17 @@ snake.applyDirection();
 if (snake.direction !== 'UP') throw new Error('Failed to apply valid queued direction');
 console.log('✓ Tests 5 & 6 Passed: Invalid direction, reversal, and rate limits enforced');
 
+// TEST 6B: Rapid cornering input buffering (e.g. RIGHT -> UP -> LEFT within one tick)
+const cornerSnake = new ServerSnake('p_test', 'Test', '#00f3ff', { x: 10, y: 10 }, 'RIGHT', 4);
+if (!cornerSnake.queueDirection('UP')) throw new Error('First rapid turn (UP) was rejected');
+if (!cornerSnake.queueDirection('LEFT')) throw new Error('Second rapid turn (LEFT) was rejected');
+if (cornerSnake.queueDirection('DOWN')) throw new Error('Third rapid turn exceeding max buffer was unexpectedly accepted');
+cornerSnake.applyDirection();
+if (cornerSnake.direction !== 'UP') throw new Error(`Tick 1 expected UP, got ${cornerSnake.direction}`);
+cornerSnake.applyDirection();
+if (cornerSnake.direction !== 'LEFT') throw new Error(`Tick 2 expected LEFT, got ${cornerSnake.direction}`);
+console.log('✓ Test 6B Passed: Rapid cornering turn buffering preserved without dropped inputs');
+
 // TEST 7: Food spawns on an empty cell
 const foodMgr = new ServerFoodManager();
 const s1 = new ServerSnake('p1', 'P1', '#00f3ff', { x: 5, y: 5 }, 'RIGHT', 4);

@@ -19,6 +19,7 @@ class MultiplayerClient {
     this.reconnectTimer = null;
     this.shouldAutoReconnect = false;
     this.lastSeenTick = 0;
+    this.pendingDirection = null;
   }
 
   /**
@@ -194,6 +195,7 @@ class MultiplayerClient {
     this.send('LEAVE_ROOM', {});
     this.currentRoom = null;
     this.lastSeenTick = 0;
+    this.pendingDirection = null;
     this.emit('roomState', { room: null });
   }
 
@@ -202,6 +204,7 @@ class MultiplayerClient {
    */
   sendInput(direction, seq = 0) {
     if (!direction) return false;
+    this.pendingDirection = direction;
     return this.send('INPUT', { direction, seq });
   }
 
@@ -210,6 +213,7 @@ class MultiplayerClient {
    */
   returnToLobby() {
     this.lastSeenTick = 0;
+    this.pendingDirection = null;
     return this.send('RETURN_TO_LOBBY', {});
   }
 
@@ -297,6 +301,12 @@ class MultiplayerClient {
         }
         if (typeof payload.tick === 'number') {
           this.lastSeenTick = payload.tick;
+        }
+        if (this.pendingDirection) {
+          const mySnake = payload.p1?.id === this.playerId ? payload.p1 : payload.p2?.id === this.playerId ? payload.p2 : null;
+          if (mySnake && mySnake.direction === this.pendingDirection) {
+            this.pendingDirection = null;
+          }
         }
         this.emit('gameState', payload);
         break;

@@ -47,7 +47,7 @@ console.log('✓ Test 5 Passed: Gestures shorter than minimum threshold (25px) a
 // 6. Test 180-degree Reversal Restrictions
 // If moving RIGHT, a swipe LEFT must be rejected
 const reverseLeft = controller.resolveSwipe(-50, 0, 'RIGHT');
-if (reverseLeft !== null) {
+if (!reverseLeft !== null && reverseLeft !== null) {
   throw new Error('Reversal check failed: allowed LEFT while moving RIGHT');
 }
 // If moving UP, a swipe DOWN must be rejected
@@ -104,5 +104,70 @@ if (!primaryResult || primaryResult.name !== 'RIGHT') {
   throw new Error('Primary pointer failed to resolve swipe direction');
 }
 console.log('✓ Test 8 Passed: Secondary pointer during active gesture is ignored safely');
+
+// 9. Test Real-Time PointerMove Instant Triggering
+const moveController = new SwipeController({ minDistance: 25 });
+moveController.handlePointerDown({ pointerId: 5, clientX: 100, clientY: 100 });
+
+// Move by 10px (under threshold) -> should return null
+const underThreshold = moveController.handlePointerMove({ pointerId: 5, clientX: 110, clientY: 100 }, 'UP');
+if (underThreshold !== null) {
+  throw new Error('Move under threshold unexpectedly triggered turn');
+}
+
+// Move by 30px (crosses 25px threshold) -> should return RIGHT immediately!
+const overThreshold = moveController.handlePointerMove({ pointerId: 5, clientX: 130, clientY: 100 }, 'UP');
+if (!overThreshold || overThreshold.name !== 'RIGHT') {
+  throw new Error(`PointerMove over threshold failed to trigger: got ${overThreshold?.name}`);
+}
+console.log('✓ Test 9 Passed: handlePointerMove triggers immediately upon reaching distance threshold');
+
+// 10. Test No Duplicate Turn on PointerUp when already dispatched
+const upAfterMove = moveController.handlePointerUp({ pointerId: 5, clientX: 135, clientY: 100 }, 'UP');
+if (upAfterMove !== null) {
+  throw new Error('PointerUp unexpectedly dispatched duplicate turn after pointermove already fired');
+}
+console.log('✓ Test 10 Passed: PointerUp does not duplicate direction if move was already resolved');
+
+// 11. Test Chained Multi-Turn Swiping in a Single Continuous Stroke
+const chainedController = new SwipeController({ minDistance: 25 });
+chainedController.handlePointerDown({ pointerId: 7, clientX: 100, clientY: 100 });
+
+// Turn 1: Swipe RIGHT by moving 30px right
+const turn1 = chainedController.handlePointerMove({ pointerId: 7, clientX: 130, clientY: 100 }, 'UP');
+if (!turn1 || turn1.name !== 'RIGHT') {
+  throw new Error(`Turn 1 failed: expected RIGHT, got ${turn1?.name}`);
+}
+
+// Continue dragging in same direction (pivot tracks finger)
+chainedController.handlePointerMove({ pointerId: 7, clientX: 170, clientY: 100 }, 'UP');
+
+// Turn 2: Without lifting finger, swipe DOWN by moving 35px down
+const turn2 = chainedController.handlePointerMove({ pointerId: 7, clientX: 170, clientY: 135 }, 'UP');
+if (!turn2 || turn2.name !== 'DOWN') {
+  throw new Error(`Turn 2 failed: expected DOWN, got ${turn2?.name}`);
+}
+
+// Turn 3: Without lifting finger, swipe LEFT by moving 40px left
+const turn3 = chainedController.handlePointerMove({ pointerId: 7, clientX: 130, clientY: 135 }, 'DOWN');
+if (!turn3 || turn3.name !== 'LEFT') {
+  throw new Error(`Turn 3 failed: expected LEFT, got ${turn3?.name}`);
+}
+chainedController.handlePointerUp({ pointerId: 7, clientX: 130, clientY: 135 });
+console.log('✓ Test 11 Passed: Continuous multi-turn chained gestures succeed without lifting finger');
+
+// 12. Test Reversal Rejection in Chained Gestures
+chainedController.handlePointerDown({ pointerId: 8, clientX: 200, clientY: 200 });
+// First turn: UP
+const firstTurn = chainedController.handlePointerMove({ pointerId: 8, clientX: 200, clientY: 160 }, 'RIGHT');
+if (!firstTurn || firstTurn.name !== 'UP') {
+  throw new Error(`Initial turn failed: expected UP, got ${firstTurn?.name}`);
+}
+// Immediate reverse DOWN in same stroke should be rejected
+const reverseTurn = chainedController.handlePointerMove({ pointerId: 8, clientX: 200, clientY: 210 }, 'RIGHT');
+if (reverseTurn !== null) {
+  throw new Error('Reversal against last dispatched turn in chained gesture was unexpectedly permitted');
+}
+console.log('✓ Test 12 Passed: Reversals against last dispatched direction are rejected in chained gestures');
 
 console.log('=== ALL SWIPE CONTROLS UNIT TESTS PASSED! ===');

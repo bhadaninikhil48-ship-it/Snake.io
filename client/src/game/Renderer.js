@@ -313,7 +313,7 @@ export class Renderer {
   /**
    * Render pass for authoritative multiplayer match
    */
-  renderMultiplayer(ctx, mpState, timestamp = 0) {
+  renderMultiplayer(ctx, mpState, timestamp = 0, localPlayerId = null, pendingDirection = null) {
     // Clear background
     this.drawBackground(ctx);
 
@@ -330,23 +330,27 @@ export class Renderer {
 
     // Draw Player 1 Snake (Cyan)
     if (mpState.p1 && mpState.p1.segments) {
+      const p1Intended = (localPlayerId && mpState.p1.id === localPlayerId) ? pendingDirection : null;
       this.drawPlayerSnake(
         ctx,
         mpState.p1,
         '#00f3ff',
         'rgba(0, 243, 255, 0.45)',
-        timestamp
+        timestamp,
+        p1Intended
       );
     }
 
     // Draw Player 2 Snake (Pink)
     if (mpState.p2 && mpState.p2.segments) {
+      const p2Intended = (localPlayerId && mpState.p2.id === localPlayerId) ? pendingDirection : null;
       this.drawPlayerSnake(
         ctx,
         mpState.p2,
         '#ff007f',
         'rgba(255, 0, 127, 0.45)',
-        timestamp
+        timestamp,
+        p2Intended
       );
     }
 
@@ -359,7 +363,7 @@ export class Renderer {
   /**
    * Renders a multiplayer participant's snake
    */
-  drawPlayerSnake(ctx, pSnake, baseColor, glowColor, timestamp) {
+  drawPlayerSnake(ctx, pSnake, baseColor, glowColor, timestamp, intendedDirection = null) {
     const segments = pSnake.segments;
     if (!segments || segments.length === 0) return;
 
@@ -415,8 +419,9 @@ export class Renderer {
     ctx.arc(hx, hy, headRadius, 0, Math.PI * 2);
     ctx.fill();
 
-    // 3. Draw Eyes
-    this.drawSnakeEyes(ctx, hx, hy, pSnake.direction, headRadius, isDead);
+    // 3. Draw Eyes looking in the direction of movement (or local pending direction)
+    const eyeDir = intendedDirection || pSnake.direction;
+    this.drawSnakeEyes(ctx, hx, hy, eyeDir, headRadius, isDead);
 
     // 4. Draw Callsign Tag above head
     if (pSnake.name) {
